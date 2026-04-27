@@ -1,0 +1,28 @@
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editor temp / swap files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Common credential / secret files
+*.pem
+*.key
+*.pfx
+*.env
+secrets.txt
+credentials.txt
+*token*
+*password*
+
+# Backup files
+*.bak
+*.old
+*.orig
+
+# Local notes that shouldn't be public
