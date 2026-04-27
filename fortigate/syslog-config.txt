@@ -1,0 +1,13 @@
+# FortiGate syslog filter configuration
+#
+# Required after every FortiGate reboot.
+# Without these settings, only session-close events reach Splunk -
+# traffic logs and DROP events are not forwarded.
+#
+# Apply via FortiGate CLI:
+
+config log syslogd filter
+    set severity information
+    set forward-traffic enable
+    set local-traffic enable
+end
