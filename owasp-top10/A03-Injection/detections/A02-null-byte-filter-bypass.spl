@@ -1,0 +1,5 @@
+index=main sourcetype="nginx:juice-shop:json"
+(uri="*%00*" OR uri="*%2500*")
+| eval detection_name="A02 Null Byte Injection / Filter Bypass"
+| eval severity="critical"
+| table _time, remote_addr, method, uri, status, detection_name, severity

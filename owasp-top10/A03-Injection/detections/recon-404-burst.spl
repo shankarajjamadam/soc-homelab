@@ -1,0 +1,7 @@
+index=main sourcetype="nginx:juice-shop:json" status=404
+| bucket _time span=1m
+| stats count dc(uri) as unique_404_uris by _time, remote_addr
+| where count > 50 AND unique_404_uris > 30
+| eval detection_name = "Recon: directory enumeration (404 burst)"
+| eval severity = "medium"
+| table _time, remote_addr, count, unique_404_uris, detection_name, severity

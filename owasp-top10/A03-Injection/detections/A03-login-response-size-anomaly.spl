@@ -1,0 +1,7 @@
+index=main sourcetype="nginx:juice-shop:json" uri="/rest/user/login" method=POST earliest=-24h
+| eventstats avg(bytes_sent) as avg_size stdev(bytes_sent) as std_size
+| eval z_score = round((bytes_sent - avg_size) / std_size, 2)
+| where z_score > 2
+| eval detection_name = "A03 Login response size anomaly"
+| eval severity = "medium"
+| table _time, remote_addr, status, bytes_sent, avg_size, z_score, detection_name, severity
