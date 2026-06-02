@@ -1,0 +1,11 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	http
+#open	2026-06-02-08-31-12
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	trans_depth	method	host	uri	referrer	version	user_agent	origin	request_body_len	response_body_len	status_code	status_msg	info_code	info_msg	tags	username	password	proxied	orig_fuids	orig_filenames	orig_mime_types	resp_fuids	resp_filenames	resp_mime_types
+#types	time	string	addr	port	addr	port	count	string	string	string	string	string	string	string	count	count	count	string	count	string	set[enum]	string	string	set[string]	vector[string]	vector[string]	vector[string]	vector[string]	vector[string]	vector[string]
+1780352912.222332	CFNUTvtuNKKdkhZ6d	10.10.10.5	42012	10.10.10.50	3000	1	POST	10.10.10.50:3000	/rest/user/login	-	1.1	curl/8.19.0	-	62	799	200	OK	-	-	(empty)	-	-	-	FqPh12LO64BOAzO27	-	text/json	F0r3Q42naKbuuajbnj	-	text/json
+1780352938.331416	CZFy1540bbxbJPmvp8	10.10.10.5	60554	10.10.10.50	3000	1	POST	10.10.10.50:3000	/rest/user/login	-	1.1	curl/8.19.0	-	55	799	200	OK	-	-	(empty)	-	-	-	Fwwoq03z6E3gKYEkG5	-	text/json	Fcwy1713L7dhgYvhyh	-	text/json
+#close	2026-06-02-08-31-12
