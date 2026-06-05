@@ -1,0 +1,53 @@
+# Scenario 05 — Command Injection — Splunk Detection Queries
+# Lab: SOC Home Lab | Shankar Ajjamadam | June 2026
+# Index: sysmon | Source: Sysmon via Splunk UF on Windows 10
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 1 — Web Server Spawning Shell (Primary)
+# MITRE: T1059.003 | Severity: CRITICAL
+# Saved Alert: CMD Injection - Web Server Spawning Shell
+# ─────────────────────────────────────────────────────────────
+index=sysmon EventCode=1 ParentImage="*httpd.exe*" Image="*cmd.exe*"
+| table _time, Image, CommandLine, ParentImage, ProcessId, User, Computer
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 2 — Credential Access via Web Shell
+# MITRE: T1003 | Severity: CRITICAL
+# ─────────────────────────────────────────────────────────────
+index=sysmon EventCode=1 ParentImage="*httpd.exe*"
+| search CommandLine="*passwords*" OR CommandLine="*credential*" OR CommandLine="*ClinicData*" OR CommandLine="*shadow*"
+| table _time, CommandLine, ParentImage, User
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 3 — System Enumeration via Web Process
+# MITRE: T1082, T1087 | Severity: HIGH
+# ─────────────────────────────────────────────────────────────
+index=sysmon EventCode=1 ParentImage="*httpd.exe*"
+| search CommandLine="*whoami*" OR CommandLine="*systeminfo*" OR CommandLine="*net user*" OR CommandLine="*ipconfig*"
+| table _time, CommandLine, User
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 4 — Web Shell Write Attempt
+# MITRE: T1505.003 | Severity: CRITICAL
+# ─────────────────────────────────────────────────────────────
+index=sysmon EventCode=1 ParentImage="*httpd.exe*"
+| search CommandLine="*.php*" OR CommandLine="*echo*" OR CommandLine="*shell*"
+| table _time, CommandLine, User
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 5 — Full Phase Correlation (All 10 Phases)
+# ─────────────────────────────────────────────────────────────
+index=sysmon EventCode=1 ParentImage="*httpd.exe*"
+| eval phase=case(
+    match(CommandLine,"whoami"),"Phase 2 - RCE Confirmation",
+    match(CommandLine,"net user"),"Phase 3 - User Enumeration",
+    match(CommandLine,"whoami /priv"),"Phase 4 - Privilege Check",
+    match(CommandLine,"dir C"),"Phase 5 - File System Recon",
+    match(CommandLine,"passwords"),"Phase 6 - Credential Access",
+    match(CommandLine,".php"),"Phase 7 - Web Shell Attempt",
+    match(CommandLine,"schtasks"),"Phase 8 - Persistence Check",
+    match(CommandLine,"ping"),"Phase 9 - Lateral Prep",
+    match(CommandLine,"copy"),"Phase 10 - Exfil Simulation",
+    true(),"Unknown Phase")
+| stats count by phase, CommandLine
+| sort phase
