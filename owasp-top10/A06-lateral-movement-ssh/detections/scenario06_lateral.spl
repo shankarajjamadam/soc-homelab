@@ -1,0 +1,48 @@
+# Scenario 06 — Lateral Movement SSH — Splunk Detection Queries
+# Lab: SOC Home Lab | Shankar Ajjamadam | June 2026
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 1 — SSH Brute Force (auth.log — Ubuntu Server)
+# MITRE: T1110.001 | Severity: HIGH
+# ─────────────────────────────────────────────────────────────
+index=main host="ubuntu-server-vlan20" sourcetype="linux_secure"
+| search "Failed password"
+| rex field=_raw "Failed password for (?P<user>\S+) from (?P<src_ip>\S+)"
+| stats count as failures by user, src_ip
+| where failures > 5
+| eval alert="SSH Brute Force Detected"
+| table _time, src_ip, user, failures, alert
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 2 — Successful SSH After Failures (auth.log)
+# MITRE: T1021.004 | Severity: CRITICAL
+# ─────────────────────────────────────────────────────────────
+index=main host="ubuntu-server-vlan20" sourcetype="linux_secure"
+| rex field=_raw "(?P<result>Failed|Accepted) password for (?P<user>\S+) from (?P<src_ip>\S+)"
+| stats count(eval(result="Failed")) as failures,
+        count(eval(result="Accepted")) as successes by user, src_ip
+| where failures > 3 AND successes > 0
+| eval alert="Brute Force Succeeded — Lateral Movement"
+| table src_ip, user, failures, successes, alert
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 3 — Meterpreter C2 (Sysmon EID 3)
+# MITRE: T1071.001, T1095 | Severity: CRITICAL
+# ─────────────────────────────────────────────────────────────
+index=sysmon EventCode=3 DestinationPort=4444
+| table _time, Image, SourceIp, DestinationIp, DestinationPort, ProcessId
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 4 — SOCKS Proxy Activity (Sysmon EID 3)
+# MITRE: T1090.001 | Severity: HIGH
+# ─────────────────────────────────────────────────────────────
+index=sysmon EventCode=3 DestinationPort=1080
+| table _time, Image, SourceIp, DestinationIp, DestinationPort
+
+# ─────────────────────────────────────────────────────────────
+# DETECTION 5 — Cross-VLAN Traffic (Sysmon EID 3)
+# MITRE: T1599 | Severity: HIGH
+# ─────────────────────────────────────────────────────────────
+index=sysmon EventCode=3
+| where match(DestinationIp, "^10\.10\.20\.")
+| table _time, Image, SourceIp, DestinationIp, DestinationPort
