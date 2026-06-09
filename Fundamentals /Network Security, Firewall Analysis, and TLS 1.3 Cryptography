@@ -1,0 +1,133 @@
+# Project Overview
+This repository documents a comprehensive, hands-on network security lab simulating real-world defensive and offensive operations. The lab covers active network scanning, firewall behavior analysis (DROP vs. REJECT), Public Key Infrastructure (PKI) concepts, and a complete simulation of a state-of-the-art **TLS 1.3 Handshake** using OpenSSL and Wireshark.
+
+###  Lab Architecture
+*   **Attacker/Client Node:** Kali Linux (`10.10.10.X`)
+*   **Target/Server Node:** Ubuntu Server (`10.10.10.20`)
+*   **Network Analyzer:** Wireshark Packet Sniffer
+*   **Security Boundary:** Uncomplicated Firewall (UFW) on Ubuntu
+---
+
+## Phase 1: Network Reconnaissance & Firewall Analysis
+
+### 1. Active Port Scanning
+We initiated active reconnaissance from the Kali Linux node to identify open services on the Ubuntu Server. We analyzed the difference between a TCP Connect Scan and a TCP SYN (Half-Open) Scan.
+
+*   **TCP Connect Scan Command:**
+    bash
+nmap -sT 10.10.10.20  
+```
+*   *Mechanism:* Completes the full TCP 3-way handshake (`SYN` -> `SYN-ACK` -> `ACK`)
+and then immediately tears it down with a `RST` (Reset) packet. It is highly visible in application logs.
+
+TCP SYN Scan Command: bashsudonmap−sS10.10.10.20
+bashsudonmap−sS10.10.10.20
+Mechanism: Sends a SYN packet. If a SYN−ACK
+SYN−ACK is received, it immediately replies with a RST to close the connection before it is fully established. This is stealthier as many legacy applications do not log incomplete connections.
+2. Firewall Behavior: DROP vs. REJECT
+We analyzed how the Ubuntu Server's Uncomplicated Firewall (UFW) handles blocked traffic.
+
+REJECT Behavior:
+The firewall blocks the packet but sends an ICMP "Destination Unreachable" or TCP RST packet back to the scanner.
+Result: The scanner immediately knows the port is closed/blocked.
+DROP Behavior (Default UFW):
+The firewall silently discards the incoming packet without sending any response.
+Result: The scanner is forced to wait for a timeout, significantly slowing down scanning speeds and consuming attacker resources.
+
+Phase 2: Simulating a Secure TLS 1.3 Handshake
+To secure communications between our nodes, we configured a secure TLS server on the Ubuntu node and connected to it using Kali Linux.
+
+1. Generating a Self-Signed Digital Certificate (On Ubuntu)
+We acted as our own Certificate Authority (CA) to generate a private key and a self-signed X.509 certificate using the RSA algorithm:
+
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes  
+
+req−x509: Specifies we want a self-signed certificate.
+−newkeyrsa:4096
+−newkeyrsa:4096: Generates a 4096-bit RSA key pair.
+−nodes
+−nodes: Stores the private key without a passphrase for automated server startup.
+
+2. Launching the TLS Server (On Ubuntu)
+We started an OpenSSL listening service on port 4433 using our generated certificate and key:
+
+openssl s\_server -accept 4433 -cert cert.pem -key key.pem  
+
+3. Firewall Troubleshooting
+When the initial connection from Kali hung, we diagnosed that the Ubuntu UFW firewall was dropping the packets on port 4433.
+We resolved this by creating a stateful firewall rule:
+
+sudo ufw allow 4433/tcp  
+sudo ufw status  
+
+4. Establishing the Secure Connection (On Kali)
+
+With the port opened, we initiated a secure connection from Kali using the OpenSSL client:
+
+openssl s\_client -connect 10.10.10.20:4433  
+
+Phase 3: Cryptographic & Packet Analysis
+1. TLS 1.3 Session Parameters
+The connection successfully completed a 1-Round Trip Time (1-RTT) TLS 1.3 handshake. The established session parameters were:
+
+Protocol: TLSv1.3
+Cipher Suite negotiated: TLS_AES_256_GCM_SHA384
+Symmetric Encryption: AES (Advanced Encryption Standard) with a 256-bit key in Galois/Counter Mode (GCM) for Authenticated
+Encryption (AEAD).
+
+Key Derivation/Hashing: SHA384 (Secure Hash Algorithm, 384-bit output).
+Verification Code: 18(self−signedcertificate)
+18(self−signedcertificate) - Flagged because the root certificate is not in Kali's trusted local certificate store,
+confirming PKI trust chain mechanics.
+
+2. Diffie-Hellman Key Exchange Math
+
+During the handshake, the nodes used the Ephemeral Diffie-Hellman key exchange to establish a shared secret without sending it over the
+wire. The mathematical foundation is:
+
+he client and server agree on a large prime number p and a base g
+The client chooses a private key a and sends public key A=ga(modp)
+The server chooses a private key b and sends public key B=gb(modp)
+Both calculate the shared secret key K
+K=Ba (modp)=A b (modp)=g ab (modp)
+
+Phase 4: Wireshark Packet Analysis
+
+We captured the entire session on Wireshark using the display filter tcp.port==4433
+tcp.port==4433. The chronological packet sequence observed was:
+
+tcp syn: Kali requests a TCP connection.
+tcp syn, ack: Ubuntu agrees to the connection.
+tcp ack: TCP connection established (3-way handshake complete).
+client says hello (Client Hello): Kali sends its supported cipher suites and its Diffie-Hellman key share parameter.
+server says hello (Server Hello): Ubuntu selects the cipher suite (TLS_AES_256_GCM_SHA384) and sends its key share. Both nodes calculate the symmetric key.
+application data (Encrypted Handshake): Ubuntu sends its Certificate and Finished message. In TLS 1.3, this metadata is fully encrypted to preserve privacy.
+change cipher spec: A dummy packet sent solely for Middlebox Compatibility Mode to prevent legacy routers from dropping the TLS 1.3 traffic.
+application data: Kali sends its encrypted Finished verification.
+application data: Ubuntu sends the Post-Handshake New Session Ticket for 0-RTT session resumption.
+
+Phase 5: Proving Confidentiality (Plaintext vs. Ciphertext)
+
+To verify the strength of our cryptographic tunnel, we transmitted a plaintext message from Kali to Ubuntu:
+
+hello ubuntu this is secret message  
+
+The Eavesdropper's View (Wireshark Hex Dump)
+
+While the terminals displayed the message in cleartext, Wireshark captured only encrypted, pseudorandom bytes. The payload was
+completely unreadable to any middleman:
+
+0060 - ac b6 8a 13 ef 54 af 96 31 8b fa aa 3e ff   C......T..1...>.  
+0070 - 69 8b 19 5e b7 ba de 44 14 17 bd 9b a8 c8   i..^...D......1y  
+0080 - 1d 42 5a ab 26 8f 3c b6 bf 4b e4 cb 83 e7   .BZ.&.<..K.....
+
+This visually proves the core security pillar of Confidentiality in transit.
+
+Core Takeaways
+Stealth vs. Noise: SYN scans bypass basic application-level logging but are easily flagged by network-level Intrusion Detection Systems (IDS).
+Defensive Firewalling: Utilizing a DROP policy on firewalls increases the time and resources required for attackers to map an attack surface.
+TLS 1.3 Efficiency: TLS 1.3 provides a massive performance upgrade (1-RTT handshake) and enhanced privacy by encrypting handshake metadata (certificates) that TLS 1.2 left in cleartext.
+Zero-Trust Encryption: Even with physical access to the network medium (simulated by Wireshark), data remains completely secure if robust, modern symmetric algorithms (AES-GCM) are correctly implemented. ```
+
+
+
