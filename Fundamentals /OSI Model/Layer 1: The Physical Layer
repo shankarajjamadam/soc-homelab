@@ -1,0 +1,413 @@
+# OSI Model — SOC Analyst Study Guide
+## Layer 1: The Physical Layer
+
+**Author:** Claude AI / Shankar Ajjamada Motaiah | Sydney, Australia | June 2026  
+**Covers:** CompTIA Security+ SY0-701 • CySA+ CS0-003 • MITRE ATT&CK • NIST • ISO 27001 • ACSC Essential Eight • APRA CPS 234
+
+---
+
+## Table of Contents
+
+1. [What is the Physical Layer?](#chapter-1-what-is-the-physical-layer)
+2. [Layer 1 Threat Landscape](#chapter-2-layer-1-threat-landscape)
+3. [Mobile Device Management (MDM)](#chapter-3-mobile-device-management-mdm)
+4. [SOC Skills — Layer 1 Investigations](#chapter-4-soc-skills--layer-1-investigations)
+5. [MITRE ATT&CK — Layer 1 Techniques](#chapter-5-mitre-attck--layer-1-techniques)
+6. [Security Frameworks — Layer 1 Controls](#chapter-6-security-frameworks--layer-1-controls)
+7. [CompTIA Certification Reference](#chapter-7-comptia-certification-reference)
+8. [Knowledge Check](#chapter-8-knowledge-check)
+
+---
+
+## Chapter 1: What is the Physical Layer?
+
+The OSI model has seven layers. Layer 1 — the Physical Layer — is the absolute foundation. It is the actual physical medium that carries data: the copper wire, the fibre optic cable, the Wi-Fi radio wave, the electrical signal on a network port. Every single packet that travels anywhere must first exist as a physical signal at Layer 1.
+
+Most people dismiss Layer 1 as "just cables and hardware." This is one of the most dangerous misconceptions in cybersecurity. From an attacker's perspective, Layer 1 is incredibly valuable — because if you can reach the physical layer, you bypass every software control sitting above it.
+
+> ⚠️ **The Golden Rule of Physical Security**
+>
+> "Physical access is total access."
+>
+> If an attacker can physically reach a device, they can:
+> - Boot from a USB drive and bypass Windows authentication entirely
+> - Remove the hard drive and read it on their own machine
+> - Install a hardware keylogger and record every password typed
+> - Tap the network cable and passively capture all traffic
+>
+> No firewall, no SIEM, no endpoint agent stops any of these — because they all happen before or outside the operating system's awareness.
+
+### Why Layer 1 Matters in a SOC
+
+Layer 1 attacks are unique in a critical way: **no software tool can detect them directly.** Wireshark cannot see a hardware tap. Sysmon cannot detect a keylogger between a keyboard and a PC. Zeek cannot alert on someone walking into a server room.
+
+This means Layer 1 security depends entirely on a different set of controls: physical barriers, policies, access logs, CCTV, and mobile device management.
+
+> 💡 **SOC Analyst Perspective**
+>
+> You will rarely "detect" a Layer 1 attack from network logs alone. What you will do is **correlate physical events with digital anomalies:**
+> - After-hours badge swipe to server room → followed by unusual network traffic
+> - New unregistered device MAC appearing on the network
+> - USB device event in Sysmon → followed by malware execution
+> - Employee reports missing laptop → MDM triggered remote wipe
+
+---
+
+## Chapter 2: Layer 1 Threat Landscape
+
+### Threat 1 — Unauthorised Physical Access
+
+The most fundamental Layer 1 threat. If an attacker gains physical access to a device or infrastructure, the consequences cascade through every layer above.
+
+| What the attacker can do | Why software cannot stop it | SOC / IT response |
+|---|---|---|
+| Boot from USB and bypass Windows login | BIOS/UEFI runs before the OS — no endpoint agent is active | BIOS password + boot order lock + full disk encryption |
+| Remove hard drive and read it elsewhere | The OS is not running — no encryption means full data exposure | BitLocker/FileVault — without the key, the drive is unreadable |
+| Install a hardware keylogger | Physical device between keyboard and PC — no process, no driver, nothing for Sysmon | Physical port blocking, locked PC cases, regular hardware audits |
+| Connect a network tap to a cable | A passive device copies traffic silently — no packets generated | Cable management, locked comms rooms, Zeek detecting new MACs |
+| Access server room infrastructure | RAID arrays, switches, routers — all physically accessible | Mantrap, biometric access, CCTV, visitor escort policy |
+
+> 🎓 **CompTIA Security+ SY0-701 — Domain 2.0 Physical Threats**
+>
+> Physical attacks are explicitly tested. Know these scenarios:
+> - **Tailgating / piggybacking** — following someone through a secure door without badging
+> - **Shoulder surfing** — watching someone type credentials in a public space
+> - **Dumpster diving** — recovering sensitive documents or hardware from rubbish
+> - **Theft of devices** — laptops, phones, USB drives containing corporate data
+>
+> Physical security controls tested in Domain 3.0 Security Architecture:
+> - Bollards, mantraps, badge readers, CCTV, security guards, cable locks
+> - Faraday cages (block RF signals — used in high-security environments)
+> - Secure destruction of decommissioned hardware (degaussing, shredding)
+
+---
+
+### Threat 2 — USB Drop Attacks
+
+An attacker leaves a USB drive in a location where a target employee is likely to find it: a car park, reception desk, bathroom, or conference room. Human curiosity does the rest.
+
+| USB attack type | What it does | Why it is effective | Detection |
+|---|---|---|---|
+| Malware payload | Auto-executes malware when inserted | Employees are curious — they want to know what is on the drive | Sysmon EID 6416 (new device) + EID 1 (process execution from USB path) |
+| BadUSB / Rubber Ducky | Identifies as a keyboard and types pre-programmed commands at machine speed | Looks like a normal USB drive — types 100 commands in 2 seconds | Sysmon EID 1 — commands executed with no user interaction |
+| USB Killer | Sends high-voltage power surge — destroys the motherboard instantly | Physical destruction — no recovery possible | Cannot be detected by software — only port blocking prevents it |
+| Data exfiltration drive | Employee copies sensitive files to USB | Insider threat — employee has legitimate access | DLP tools, Sysmon removable media write events |
+
+> 💡 **SOC Detection — USB Events in Splunk**
+>
+> ```spl
+> # Detect new USB device connections
+> index=wineventlog EventCode=6416
+> | table _time, host, DeviceName, DeviceId
+>
+> # Detect process execution from removable media
+> index=sysmon EventCode=1
+> | regex Image="^[D-Z]:\\"
+> | table _time, host, Image, CommandLine, User
+> ```
+>
+> Alert logic: New unsigned USB device + process execution within 60 seconds = **HIGH severity alert**
+
+---
+
+### Threat 3 — Hardware Keyloggers
+
+A hardware keylogger is a small device plugged between a keyboard cable and the PC. It silently records every keystroke to internal storage. The attacker returns later to retrieve the device and read the logs.
+
+> ⚠️ **Why This is Extremely Hard to Detect**
+>
+> Hardware keyloggers are completely transparent to the operating system.
+> No new process. No new network connection. No driver installation.
+> Sysmon sees nothing. Antivirus sees nothing. EDR sees nothing.
+>
+> **Detection methods:**
+> - Physical inspection — visually check all keyboard connections regularly
+> - USB port auditing — photograph all port connections as baseline
+> - Locked PC cases — prevent access to rear USB ports
+> - Wireless keyboards — some keyloggers work on RF too (KeySweeper)
+
+---
+
+### Threat 4 — Network Taps and Rogue Devices
+
+A passive network tap splices into a cable and copies all traffic to a capture device. Unlike an active device, a passive tap generates no traffic of its own and is essentially invisible to network monitoring.
+
+| Device type | How it works | What it captures | Detection method |
+|---|---|---|---|
+| Passive network tap | Physical splice into cable — copies all bits silently | Everything: HTTP, TLS metadata, DNS, all protocols | Cannot be detected remotely — requires physical cable inspection |
+| Rogue switch | Plugged into open port — creates new network segment | All traffic on connected devices | New MAC/IP in Zeek conn.log; DHCP anomaly |
+| Rogue Wi-Fi AP | Creates evil twin or open hotspot | Credentials, session cookies, unencrypted traffic | Wireless IDS; Zeek 802.11 logs; duplicate SSID detection |
+| USB implant (LAN Turtle) | Plugs into USB port — creates reverse tunnel to attacker | All traffic on the host machine | Sysmon new network connection; unusual outbound in OPNsense |
+
+> 💡 **Lab Connection**
+>
+> In your lab, Zeek on Ubuntu ELK (10.10.10.30) monitors `conn.log` for all connections.
+> A rogue device on VMnet10 would appear as a new, unrecognised MAC address.
+>
+> ```spl
+> index=zeek sourcetype=zeek_conn
+> | stats earliest(_time) as first_seen by id.orig_h
+> | where first_seen > relative_time(now(), "-1d@d")
+> ```
+>
+> Any IP not in your known asset list (10.10.10.2, .5, .10, .20, .30) = investigate immediately.
+
+---
+
+### Threat 5 — Social Engineering at Layer 1
+
+| Technique | Description | Control |
+|---|---|---|
+| **Tailgating / Piggybacking** | Following an authorised person through a secure door without badging | Mantraps, security awareness training, challenge culture |
+| **Shoulder Surfing** | Watching someone type credentials in a public space | Privacy screens, awareness training, body positioning |
+| **Pretexting** | Fabricating a scenario to gain physical access ("I'm from IT") | Visitor verification procedures, escort policy, staff training |
+| **Dumpster Diving** | Recovering sensitive info from discarded materials | Secure document shredding policy, locked bins |
+
+> 🎓 **CompTIA Security+ — Social Engineering Controls**
+>
+> - **Mantrap** — two-door entry system that prevents tailgating (first door must close before second opens)
+> - **Security awareness training** — most effective control for social engineering
+> - **Clean desk policy** — nothing sensitive left visible or accessible
+> - **Privacy screens** — prevents shoulder surfing on laptops in public spaces
+
+---
+
+### Threat 6 — Mobile Device Threats
+
+Mobile devices are Layer 1 endpoints that travel outside the physical security perimeter constantly.
+
+| Mobile threat | What happens | Why it matters to SOC | Control |
+|---|---|---|---|
+| Lost or stolen device | Attacker has full physical access to corporate data | Immediate data breach risk | MDM remote wipe |
+| Malicious charging cable (O.MG Cable) | Hidden implant acts as BadUSB or creates Wi-Fi backdoor | Identical to legitimate cables — extremely hard to detect visually | Policy: only approved/labelled cables |
+| SIM swapping | Attacker transfers phone number to their SIM | Bypasses SMS-based MFA — attacker receives all OTPs | Move to authenticator apps (TOTP) or hardware tokens |
+| Juice jacking | Public USB charging point modified to install malware | Employees charging at airports, hotels — unaware of risk | AC adapters only; USB data blockers |
+| Unapproved app installation | App with excessive permissions or malware | May exfiltrate corporate data, access camera/microphone | MDM app allowlisting; block sideloading |
+| Jailbroken / rooted device | Security controls removed — MDM may be bypassed | Device may access corporate network completely unmanaged | MDM jailbreak detection; block non-compliant devices |
+
+---
+
+## Chapter 3: Mobile Device Management (MDM)
+
+MDM is software that allows IT and security teams to remotely manage, monitor, and control enrolled mobile devices. For a SOC analyst, MDM is both a **detection source** and a **response tool**.
+
+### Full MDM Capability Map
+
+| MDM capability | Plain English explanation | SOC / Security relevance |
+|---|---|---|
+| Remote wipe | Erase all data on the device — factory reset remotely | Stolen device: trigger wipe before attacker accesses data |
+| Remote lock | Lock device with passcode the user cannot bypass | Suspected compromise: lock immediately during investigation |
+| Force disk encryption | Require full device encryption (BitLocker/FileVault/native) | Stolen encrypted device is unreadable without the key |
+| Application allowlisting | Only pre-approved apps can install or run | Blocks malware, unapproved tools, data exfiltration apps |
+| Jailbreak / root detection | Alert when device security model is bypassed | Jailbroken device = MDM controls may be circumvented |
+| Geolocation tracking | Show current GPS location of enrolled device | Verify "I left it at home" claims; locate stolen devices |
+| Certificate deployment | Push corporate TLS certificates to device trust store | Enables TLS inspection proxy to work on mobile |
+| Wi-Fi profile enforcement | Auto-connect to corporate Wi-Fi with correct security | Prevents connection to rogue access points |
+| Compliance enforcement | Block non-compliant devices from corporate resources | No MDM + no encryption = no network access |
+| OS update enforcement | Require minimum OS version; force updates | Ensures devices are patched against known vulnerabilities |
+| Screen lock policy | Enforce auto-lock after inactivity | Prevents physical access when device is unattended |
+
+> 💡 **MDM Events in SIEM — What SOC Analysts Look For**
+>
+> High-priority MDM alerts for SOC triage:
+> - **Remote wipe triggered** — correlate with who reported device lost/stolen and when
+> - **Jailbreak detected** — treat as potentially compromised; revoke access immediately
+> - **Compliance failure** — device accessing network without MDM or encryption
+> - **New device enrolled** — verify this is a known employee and approved device
+> - **Geolocation anomaly** — device in a different country than the employee's badge swipes
+
+### BYOD vs Corporate Devices
+
+| Aspect | Corporate-managed device | BYOD (personal device) | SOC implication |
+|---|---|---|---|
+| MDM control | Full MDM — complete remote management | Containerised MDM — only corporate data managed | BYOD limits SOC response — cannot wipe whole device |
+| Disk encryption | Enforced — no exceptions | Encouraged but often not enforceable | Stolen BYOD + no encryption = potential NDB notification |
+| App control | Strict allowlisting | Limited — personal apps cannot be controlled | Personal apps may exfiltrate data from work container |
+| Incident response | Full forensic access | Limited — personal data protected | SOC scope limited on personal devices |
+| Remote wipe | Full wipe authorised | Only corporate container wiped | Faster containment on corporate devices |
+
+---
+
+## Chapter 4: SOC Skills — Layer 1 Investigations
+
+### Investigation Workflow — Physical Security Incident
+
+1. Alert fires: Splunk detects a new unrecognised MAC address on the 10.10.10.x network segment
+2. Check asset inventory: Is this MAC address in the known asset list? What device type?
+3. Check Zeek `conn.log`: What is this IP connecting to? What ports? How much data?
+4. Check OPNsense DHCP leases: When did this device first appear? What name did it register?
+5. Check physical access logs: Any badge swipes to network access areas at the same time?
+6. Check CCTV if available: Any unescorted visitors or unfamiliar personnel?
+7. Escalate: Unknown device + after-hours badge swipe + large data transfer = potential rogue device incident
+
+### Layer 1 IoCs — Indicators of Compromise
+
+| IoC type | What it looks like | Where you find it | Severity |
+|---|---|---|---|
+| New unregistered MAC address | MAC not in asset inventory appears on network | Zeek conn.log, OPNsense DHCP, Splunk | 🔴 HIGH |
+| USB device event — new hardware | EID 6416 — unknown device connected | Sysmon / Windows Event Log / Splunk | 🟡 MEDIUM |
+| Process execution from removable drive | EID 1 — executable launched from D:\ or E:\ | Sysmon / Splunk | 🔴 HIGH |
+| After-hours badge swipe to restricted area | Physical access log entry outside business hours | Physical access control / SIEM | 🔴 HIGH |
+| MDM jailbreak detection | Device security model bypassed | MDM platform / SIEM | 🔴 CRITICAL |
+| MDM compliance failure | Device accessing network without required controls | MDM platform / SIEM | 🟡 MEDIUM |
+| Rogue Wi-Fi SSID detected | Duplicate or spoofed corporate SSID | Wireless IDS / Zeek 802.11 | 🔴 HIGH |
+| Geolocation anomaly | Device in unexpected location vs badge/login | MDM + SIEM correlation | 🔴 HIGH |
+
+### Splunk Detection Queries
+
+```spl
+# Detect new USB device connections
+index=wineventlog EventCode=6416
+| table _time, host, DeviceName, DeviceId
+| sort -_time
+
+# Detect process execution from removable media
+index=sysmon EventCode=1
+| regex Image="^[D-Z]:\\"
+| table _time, host, Image, CommandLine, User
+
+# Detect new MAC addresses / IPs on network (last 24 hours)
+index=zeek sourcetype=zeek_conn
+| stats earliest(_time) as first_seen by id.orig_h
+| where first_seen > relative_time(now(), "-1d@d")
+```
+
+> ✅ **Portfolio Tip**
+>
+> Document each query with: what it detects, why it matters, the MITRE technique it covers.
+> In interviews, a Splunk dashboard showing Layer 1 IoC detection is a strong differentiator.
+> Most candidates talk about network attacks — physical layer awareness stands out.
+
+---
+
+## Chapter 5: MITRE ATT&CK — Layer 1 Techniques
+
+| Technique ID | Tactic | Name | How it works at Layer 1 | Detection in your lab |
+|---|---|---|---|---|
+| T1091 | Initial Access / Lateral Movement | Replication Through Removable Media | Malware auto-executes when USB drive is inserted | Sysmon EID 6416 + EID 1 (process from USB path) |
+| T1200 | Initial Access | Hardware Additions | Rogue switch, AP, keylogger, or LAN Turtle plugged into network port | New MAC in Zeek conn.log; Sysmon new device events |
+| T1052.001 | Exfiltration | Exfiltration Over Physical Medium — USB | Insider copies data to USB drive for removal | Sysmon removable media write; DLP alerts; EID 4663 |
+| T1556.006 | Credential Access | MFA — Hardware Token Theft | Physical theft of hardware MFA token (RSA SecurID, YubiKey) | User reports lost token; correlate with unusual logins |
+| T1498 | Impact | Network Denial of Service (physical) | Cable cutting, power disruption, hardware destruction | Loss of connectivity; availability monitoring alerts |
+| T1592.001 | Reconnaissance | Gather Victim Host Info — Hardware | Physically inspect visible hardware labels, asset tags | Visitor log anomalies; CCTV; no digital detection |
+| T1219 | Command & Control | Remote Access via Implant | LAN Turtle creates persistent reverse tunnel via USB | Sysmon outbound connection; OPNsense firewall alert |
+
+> 📌 **Memory Tip for ATT&CK Technique IDs**
+>
+> - **T1091** — Removable media (USB malware spread)
+> - **T1200** — Hardware additions (rogue devices)
+> - **T1052** — Physical exfiltration (USB data theft)
+>
+> Always include the technique ID in incident reports — it maps your finding to a universal framework any SOC team can understand immediately.
+
+---
+
+## Chapter 6: Security Frameworks — Layer 1 Controls
+
+### Controls Matrix
+
+| Security control | Why it addresses Layer 1 | NIST SP | ISO 27001 | ACSC / APRA |
+|---|---|---|---|---|
+| Physical access controls (locks, mantraps, badges) | Prevent unauthorised physical access | SP 800-116 | A.11.1.1 | APRA CPS 234 §36 |
+| CCTV and security monitoring | Detect and deter physical intrusion | SP 800-53 PE-6 | A.11.1.2 | APRA CPS 234 §36 |
+| Removable media controls (USB blocking) | Prevent USB drop attacks and insider exfiltration | SP 800-111 | A.8.3.1 | Essential Eight ML2 |
+| Full disk encryption (BitLocker / FileVault) | Stolen device is unreadable without encryption key | SP 800-111 | A.10.1.1 | Essential Eight ML2 |
+| Mobile Device Management (MDM) | Remote wipe, encryption enforcement, jailbreak detection | SP 800-124r2 | A.6.2.1 | Essential Eight ML2 |
+| Hardware security audits | Detect rogue devices, keyloggers, unauthorised hardware | SP 800-53 PE-18 | A.11.2.4 | APRA CPS 234 §35 |
+| Clean desk and clear screen policy | Prevent shoulder surfing and information exposure | SP 800-53 PE-5 | A.11.2.9 | ISM Control 0429 |
+| Visitor management and escort policy | Prevent tailgating and social engineering | SP 800-53 PE-2 | A.11.1.2 | APRA CPS 234 §36 |
+| Secure hardware disposal | Prevent data recovery from decommissioned equipment | SP 800-88r1 | A.11.2.7 | ISM Control 0363 |
+| Network port security (disable unused ports) | Prevent rogue device connection to live network ports | SP 800-53 CM-7 | A.13.1.1 | Essential Eight ML2 |
+
+### Australian Regulatory Context
+
+> ✅ **What comes up in Australian SOC interviews**
+>
+> **Privacy Act 1988 / NDB scheme:**
+> A stolen unencrypted laptop containing customer data is a **notifiable data breach**.
+> SOC analysts may be involved in the investigation and 30-day notification process.
+>
+> **APRA CPS 234:**
+> Financial institutions must protect information assets from physical threats.
+> Physical access controls to systems handling customer financial data are in scope.
+>
+> **ACSC Essential Eight:**
+> Application Control (ML2) covers restricting USB/removable media execution.
+> Patch Applications and OS (ML2) — MDM enforces this on mobile endpoints.
+>
+> Knowing the regulatory consequence of a Layer 1 breach distinguishes a compliance-aware SOC analyst from a purely technical one.
+
+---
+
+## Chapter 7: CompTIA Certification Reference
+
+### Security+ SY0-701 — Layer 1 Coverage
+
+| Domain | Topic | What you need to know |
+|---|---|---|
+| 1.0 General Security Concepts | Physical security controls | Defence in depth — physical controls are the first layer before any technical control |
+| 2.0 Threats, Vulnerabilities & Mitigations | Physical attack vectors | Tailgating, shoulder surfing, dumpster diving, USB drop, BadUSB, hardware keyloggers — know all and their mitigations |
+| 2.0 Threats, Vulnerabilities & Mitigations | Mobile device threats | SIM swapping, juice jacking, rogue charging cable, jailbreaking — and MDM responses |
+| 3.0 Security Architecture | Physical security design | Mantraps, bollards, CCTV, server room controls, cable management, Faraday cages |
+| 3.0 Security Architecture | Mobile device security | MDM, MAM, BYOD vs corporate device policies, containerisation |
+| 4.0 Security Operations | Incident response for physical events | Lost/stolen device procedure, MDM remote wipe, chain of custody |
+| 4.0 Security Operations | Endpoint detection | USB device events, removable media policies, DLP |
+
+### CySA+ CS0-003 — Layer 1 Coverage
+
+| Domain | Topic | Analyst skill required |
+|---|---|---|
+| 1.0 Security Operations | Physical IoC correlation | Correlate badge access logs, CCTV events, and new device events in SIEM |
+| 1.0 Security Operations | USB and removable media detection | Write and tune Splunk rules for USB insertion and execution events |
+| 2.0 Vulnerability Management | Physical attack surface | Assess physical controls as part of vulnerability scope |
+| 3.0 Incident Response | Lost/stolen device response | MDM remote wipe procedure, evidence preservation, NDB notification trigger |
+| 4.0 Reporting | Physical security findings | Document physical security vulnerabilities with MITRE ATT&CK mapping |
+
+### Key Exam Terms
+
+| Term | Definition | Exam context |
+|---|---|---|
+| Tailgating / piggybacking | Following an authorised person through a secure door | CompTIA's preferred term is tailgating |
+| Mantrap | Two-door entry — first must close before second opens | Physical control — tested in Security Architecture |
+| BadUSB | USB device identifying as HID/keyboard to execute commands | Firmware-level — antivirus cannot detect it |
+| Juice jacking | Compromised public USB charging point | Defence: AC adapters or USB data blockers |
+| MDM | Software for remotely managing enrolled mobile devices | Remote wipe, compliance enforcement, cert deployment |
+| MAM | Managing applications only — not the whole device | Used in BYOD where full device management is inappropriate |
+| BYOD | Policy allowing personal devices for work | Security trade-off: flexibility vs reduced SOC control |
+| Containerisation | Separating corporate data into encrypted container on personal device | MDM manages only the container — personal data untouched |
+| Full disk encryption (FDE) | Encrypting entire storage device | BitLocker (Windows), FileVault (Mac), LUKS (Linux) |
+| Faraday cage | Enclosure blocking electromagnetic signals | Isolates high-value devices from RF exploitation |
+
+---
+
+## Chapter 8: Knowledge Check
+
+| Question | Answer |
+|---|---|
+| What is the golden rule of physical security? | Physical access is total access — software controls can be bypassed if attacker reaches Layer 1 |
+| Name three things an attacker can do with physical access to a PC | Boot from USB to bypass login; remove hard drive; install hardware keylogger; connect network tap |
+| What is a BadUSB attack and why can antivirus not detect it? | USB device identifies as HID/keyboard and types commands. Antivirus scans file systems — HID devices have no file system to scan |
+| What is the MITRE ATT&CK ID for removable media attacks? | T1091 — Replication Through Removable Media |
+| What Windows event ID fires when a new USB device is connected? | EID 6416 — A new external device was recognised by the system |
+| Name four MDM capabilities relevant to a stolen device incident | Remote wipe, remote lock, geolocation tracking, encryption enforcement |
+| What is the difference between MDM and MAM? | MDM manages the whole device. MAM manages only applications — used in BYOD |
+| What is juice jacking and what is the defence? | Compromised public USB charging point. Defence: AC adapters or USB data blockers |
+| Which NIST publication covers mobile device security? | NIST SP 800-124r2 — Guidelines for Managing Mobile Device Security |
+| Under Australian law, when does a stolen laptop become a notifiable data breach? | When device contains personal information AND was not encrypted — NDB notification within 30 days |
+
+### Progression Checklist
+
+Before moving to Layer 2, confirm you can:
+
+- [ ] Explain why physical access defeats software security controls
+- [ ] Name and describe five Layer 1 attack vectors
+- [ ] Explain what MDM can do and when remote wipe is appropriate
+- [ ] Recall T1091, T1200, T1052 and what each covers
+- [ ] Map physical controls to NIST, ISO 27001, and Essential Eight
+- [ ] Explain the BYOD vs corporate device security trade-off
+- [ ] Know the Australian regulatory consequences of a physical data breach
+
+---
+
+*OSI Study Guide — Layer 1: Physical Layer | Shankar Ajjamadam | Sydney 2026*  
+*Repository: [shankarajjamadam/soc-homelab](https://github.com/shankarajjamadam/soc-homelab)*
